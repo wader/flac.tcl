@@ -27,271 +27,241 @@
 # Uses modified version of md5.tcl -q Copyright (C) 2003 Pat Thoyts <patthoyts@users.sourceforge.net>
 #
 
-set section_depth 0
-
-proc section {br label body} {
-    global section_depth
-
-    set indent [string repeat "  " $section_depth]
-    set start [bitreader bytepos $br]
-    puts [format "%.8d-%.8d      %s- %s:" $start $start $indent $label]
-    incr section_depth 1
-    uplevel 1 $body
-    incr section_depth -1
-}
-
-proc entry {br label body} {
-    global section_depth
-
-    set indent [string repeat "  " $section_depth]
-    set start [bitreader bytepos $br]
-    set startbits [bitreader bitpos $br]
-    set r [uplevel 1 $body]
-    set end [bitreader bytepos $br]
-    set endbits [bitreader bitpos $br]
-    set bytealign [bitreader bytealign $br]
-    if {$bytealign == 0} {
-        incr end -1
-    }
-    set bitsize [expr $endbits - $startbits]
-    lassign $r value
-    puts [format "%.8d-%.8d %6d %s%s: %s" $start $end $bitsize $indent $label $value]
-    return $r
-}
-
-proc bitreader args {
-    lassign $args cmd
-    set args [lreplace $args 0 0]
-
-    switch $cmd {
-        new {}
-        uint -
-        int -
-        unary -
-        bytes -
-        ascii -
-        skip -
-        bytepos -
-        bitpos -
-        end -
-        bytealign -
-        byterange -
-        delete {
-            lassign $args handlevar
-            upvar #0 $handlevar h
-            set args [lreplace $args 0 0]
-        }
-        default {
-            error "unknown cmd $cmd"
-        }
+namespace eval ::log {
+    namespace export *
+    variable uid
+    if {![info exists uid]} {
+        set uid 0
     }
 
-    switch -exact -- $cmd {
-        new {
-            lassign $args data
+    proc new {br} {
+        variable uid
+        set t [namespace current]::[incr uid]
+        upvar #0 $t s
 
-            for {set i 0} {1} {incr i} {
-                set handlevar "::__bitreader$i"
-                if {![info exists $handlevar]} {
-                    upvar #0 $handlevar h
-                    break
-                }
-            }
+        array set s [list \
+            br $br \
+            depth 0 \
+        ]
 
-            array set h [list \
-                data $data \
-                buf 0 \
-                bufbits 0 \
-                pos 0 \
-                bitpos 0 \
-            ]
+        return $t
+    }
 
-            return $handlevar
-        }
-        uint {
-            lassign $args bits
+    proc section {t label body} {
+        upvar #0 $t s
 
-            while {$bits > $h(bufbits)} {
-                set b [scan [string index $h(data) $h(pos)] %c]
-                set h(buf) [expr ($h(buf)<<8) | $b]
-                incr h(bufbits) 8
-                incr h(pos) 1
-            }
-            incr h(bitpos) $bits
+        set indent [string repeat "  " $s(depth)]
+        set start [bitreader::bytepos $s(br)]
+        puts [format "%.8d-%.8d      %s- %s:" $start $start $indent $label]
+        incr s(depth) 1
+        uplevel 1 $body
+        incr s(depth) -1
+    }
 
-            set n [expr $h(buf)>>($h(bufbits)-$bits)]
-            set h(buf) [expr $h(buf) & ((1<<($h(bufbits)-$bits))-1)]
-            incr h(bufbits) [expr -$bits]
+    proc entry {t label body} {
+        upvar #0 $t s
 
-            return $n
+        set indent [string repeat "  " $s(depth)]
+        set start [bitreader::bytepos $s(br)]
+        set startbits [bitreader::bitpos $s(br)]
+        set r [uplevel 1 $body]
+        set end [bitreader::bytepos $s(br)]
+        set endbits [bitreader::bitpos $s(br)]
+        set bytealign [bitreader::bytealign $s(br)]
+        if {$bytealign == 0} {
+            incr end -1
         }
-        int {
-            lassign $args bits
-            set n [bitreader uint $handlevar $bits]
-            # two's complement
-            if {$n & (1 << ($bits-1))} {
-                set n [expr -((~$n & (1<<$bits)-1)+1)]
-            }
-            return $n
-        }
-        unary {
-            for {set n 0} {[bitreader uint $handlevar 1] == 0} {incr n} {
-               # nop
-            }
-            return $n
-        }
-        bytes -
-        ascii {
-            lassign $args bytes
-            set s ""
-            for {set i 0} {$i < $bytes} {incr i} {
-                append s [format %c [bitreader uint $handlevar 8]]
-            }
-            return $s
-        }
-        skip {
-            lassign $args bits
+        set bitsize [expr $endbits - $startbits]
+        lassign $r value
+        puts [format "%.8d-%.8d %6d %s%s: %s" $start $end $bitsize $indent $label $value]
 
-            if {$bits > $h(bufbits)} {
-                incr bits [expr -$h(bufbits)]
-                set h(buf) 0
-                set h(bufbits) 0
-
-                set skip_bytes [expr $bits / 8]
-                set bits [expr $bits % 8]
-                incr h(pos) $skip_bytes
-            }
-            incr h(bitpos) $bits
-
-            bitreader uint $handlevar $bits
-            return ""
-        }
-        bytepos {
-            if {$h(bufbits) > 0} {
-                return [expr $h(pos)-1]
-            }
-            return $h(pos)
-        }
-        bitpos {
-            return $h(bitpos)
-        }
-        end {
-            return [expr $h(pos) >= [string length $h(data)]]
-        }
-        bytealign {
-            return $h(bufbits)
-        }
-        byterange {
-            lassign $args start end
-            return [string range $h(data) $start $end]
-        }
-        delete {
-            unset h
-        }
+        return $r
     }
 }
 
-proc wstring {ch s} {
-    puts -nonewline $ch $s
-}
-
-proc wuint8 {ch n} {
-    puts -nonewline $ch [binary format c $n]
-}
-
-proc wint16le {ch n} {
-    puts -nonewline $ch [binary format s $n]
-}
-
-proc wint24le {ch n} {
-    puts -nonewline $ch [binary format ccc [expr $n&0xff] [expr ($n&0xff00)>>8] [expr ($n&0xff0000)>>16]]
-}
-
-proc wuint16le {ch n} {
-    puts -nonewline $ch [binary format su1 $n]
-}
-
-proc wuint32le {ch n} {
-    puts -nonewline $ch [binary format iu1 $n]
-}
-
-proc wavwriter args {
-    lassign $args cmd
-    set args [lreplace $args 0 0]
-
-    switch $cmd {
-        new {}
-        write -
-        delete {
-            lassign $args handlevar
-            upvar #0 $handlevar h
-            set args [lreplace $args 0 0]
-        }
-        default {
-            error "unknown cmd $cmd"
-        }
+namespace eval ::bitreader {
+    namespace export *
+    variable uid
+    if {![info exists uid]} {
+        set uid 0
     }
 
-    switch -exact -- $cmd {
-        new {
-            lassign $args ch config
+    proc new {data} {
+        variable uid
+        set t [namespace current]::[incr uid]
+        upvar #0 $t s
 
-            for {set i 0} {1} {incr i} {
-                set handlevar "::__wavwriter$i"
-                if {![info exists $handlevar]} {
-                    upvar #0 $handlevar h
-                    break
-                }
-            }
+        array set s [list \
+            data $data \
+            buf 0 \
+            bufbits 0 \
+            pos 0 \
+            bitpos 0 \
+        ]
 
-            set bitdepth [dict get $config bitdepth]
-            set channels [dict get $config channels]
-            set sample_rate [dict get $config sample_rate]
-            set data_size [expr $channels * $bitdepth/8 * [dict get $config total_samples]]
-            puts -nonewline $ch "RIFF"
-            # length
-            wuint32le $ch [expr 16+$data_size]
-            wstring $ch "WAVE"
-            # fmt subchunk
-            wstring $ch "fmt "
-            # fmt subchunk length
-            wuint32le $ch 16
-            # 1=PCM
-            wuint16le $ch 1
-            # channels
-            wuint16le $ch $channels
-            # sample rate
-            wuint32le $ch $sample_rate
-            # byte rate
-            wuint32le $ch [expr $sample_rate * $channels * $bitdepth/8]
-            # block align
-            wuint16le $ch [expr $channels * $bitdepth/8]
-            # bits per sample
-            wuint16le $ch $bitdepth
-            # data subchunk
-            wstring $ch "data"
-            # data subchunk length
-            wuint32le $ch $data_size
+        return $t
+    }
+    proc uint {t bits} {
+        upvar #0 $t s
 
-            array set h [list \
-                ch $ch \
-                bitdepth $bitdepth \
-            ]
-
-            return $handlevar
+        while {$bits > $s(bufbits)} {
+            set b [scan [string index $s(data) $s(pos)] %c]
+            set s(buf) [expr ($s(buf)<<8) | $b]
+            incr s(bufbits) 8
+            incr s(pos) 1
         }
-        write {
-            lassign $args n
-            switch -exact -- $h(bitdepth) {
-                8 {wuint8 $h(ch) [expr $n+128]}
-                16 {wint16le $h(ch) $n}
-                24 {wint24le $h(ch) $n}
-            }
+        incr s(bitpos) $bits
+
+        set n [expr $s(buf)>>($s(bufbits)-$bits)]
+        set s(buf) [expr $s(buf) & ((1<<($s(bufbits)-$bits))-1)]
+        incr s(bufbits) [expr -$bits]
+
+        return $n
+    }
+    proc int {t bits} {
+        upvar #0 $t s
+
+        set n [uint $t $bits]
+        # two's complement
+        if {$n & (1 << ($bits-1))} {
+            set n [expr -((~$n & (1<<$bits)-1)+1)]
         }
-        delete {
-            unset h
+
+        return $n
+    }
+    proc unary {t} {
+        upvar #0 $t s
+        for {set n 0} {[uint $t 1] == 0} {incr n} {
+            # nop
+        }
+        return $n
+    }
+    proc bytes {t size} {
+        upvar #0 $t s
+
+        set b ""
+        for {set i 0} {$i < $size} {incr i} {
+            append b [format %c [uint $t 8]]
+        }
+
+        return $b
+    }
+    proc skip {t bits} {
+        upvar #0 $t s
+
+        if {$bits > $s(bufbits)} {
+            incr bits [expr -$s(bufbits)]
+            set s(buf) 0
+            set s(bufbits) 0
+
+            set skip_bytes [expr $bits / 8]
+            set bits [expr $bits % 8]
+            incr s(pos) $skip_bytes
+        }
+        incr s(bitpos) $bits
+
+        uint $t $bits
+
+        return ""
+    }
+    proc bytepos {t} {
+        upvar #0 $t s
+
+        if {$s(bufbits) > 0} {
+            return [expr $s(pos)-1]
+        }
+
+        return $s(pos)
+    }
+    proc bitpos {t} {
+        upvar #0 $t s
+        return $s(bitpos)
+    }
+    proc end {t} {
+        upvar #0 $t s
+        return [expr $s(pos) >= [string length $s(data)]]
+    }
+    proc bytealign {t} {
+        upvar #0 $t s
+        return $s(bufbits)
+    }
+    proc byterange {t start end} {
+        upvar #0 $t s
+        return [string range $s(data) $start $end]
+    }
+    proc delete {t} {
+        upvar #0 $t s
+        unset s
+    }
+}
+
+namespace eval ::wavwriter {
+    namespace export *
+    variable uid
+    if {![info exists uid]} {
+        set uid 0
+    }
+
+    proc new {ch config} {
+        variable uid
+        set t [namespace current]::[incr uid]
+        upvar #0 $t s
+
+        set bitdepth [dict get $config bitdepth]
+        set channels [dict get $config channels]
+        set sample_rate [dict get $config sample_rate]
+        set data_size [expr $channels * $bitdepth/8 * [dict get $config total_samples]]
+        puts -nonewline $ch "RIFF"
+        # length
+        wuint32le $ch [expr 16+$data_size]
+        wstring $ch "WAVE"
+        # fmt subchunk
+        wstring $ch "fmt "
+        # fmt subchunk length
+        wuint32le $ch 16
+        # 1=PCM
+        wuint16le $ch 1
+        # channels
+        wuint16le $ch $channels
+        # sample rate
+        wuint32le $ch $sample_rate
+        # byte rate
+        wuint32le $ch [expr $sample_rate * $channels * $bitdepth/8]
+        # block align
+        wuint16le $ch [expr $channels * $bitdepth/8]
+        # bits per sample
+        wuint16le $ch $bitdepth
+        # data subchunk
+        wstring $ch "data"
+        # data subchunk length
+        wuint32le $ch $data_size
+
+        array set s [list \
+            ch $ch \
+            bitdepth $bitdepth \
+        ]
+
+        return $t
+    }
+    proc write {t n} {
+        upvar #0 $t s
+        switch -exact -- $s(bitdepth) {
+            8 {wuint8 $s(ch) [expr $n+128]}
+            16 {wint16le $s(ch) $n}
+            24 {wint24le $s(ch) $n}
         }
     }
+    proc delete {t} {
+        upvar #0 $t s
+        unset s
+    }
+
+    proc wstring {ch s} {puts -nonewline $ch $s}
+    proc wuint8 {ch n} {wstring $ch [binary format c $n]}
+    proc wint16le {ch n} {wstring $ch [binary format s $n]}
+    proc wint24le {ch n} {wstring $ch [binary format ccc [expr $n&0xff] [expr ($n&0xff00)>>8] [expr ($n&0xff0000)>>16]]}
+    proc wuint16le {ch n} {wstring $ch [binary format su1 $n]}
+    proc wuint32le {ch n} {wstring $ch [binary format iu1 $n]}
 }
 
 proc crc8_make_table {poly bits} {
@@ -747,7 +717,7 @@ proc count_leading_ones {n} {
 }
 
 proc utf8_uint {br} {
-    set n [bitreader uint $br 8]
+    set n [bitreader::uint $br 8]
     set c [count_leading_ones $n]
 
     switch -exact -- $c {
@@ -758,7 +728,7 @@ proc utf8_uint {br} {
             set width $c
             set n [expr $n & ((1<<(8-$width-1))-1)]
             for {set i 1} {$i < $width} {incr i} {
-                set n [expr ($n<<6) | ([bitreader uint $br 8]&0x3f)]
+                set n [expr ($n<<6) | ([bitreader::uint $br 8]&0x3f)]
             }
         }
     }
@@ -776,38 +746,38 @@ set block_type_to_string [dict create \
     6 Picture \
 ]
 
-proc parse_flac_metdata_block_streaminfo {br} {
+proc parse_flac_metdata_block_streaminfo {l br} {
     return [dict create \
-        minimum_block_size [entry $br "Minimum block size (samples)" {bitreader uint $br 16}] \
-        maximum_block_size [entry $br "Maximum block size (samples)" {bitreader uint $br 16}] \
-        minimum_frame_size [entry $br "Minimum frame size (bytes)" {bitreader uint $br 24}] \
-        maximum_frame_size [entry $br "Maximum frame size (bytes)" {bitreader uint $br 24}] \
-        sample_rate [entry $br "Sample rate" {bitreader uint $br 20}] \
-        channels [entry $br "Channels" {expr [bitreader uint $br 3]+1}] \
-        bit_per_sample [entry $br "Bits per sample" {expr [bitreader uint $br 5]+1}] \
-        total_samples [entry $br "Total samples in stream" {bitreader uint $br 36}] \
-        md5 [entry $br "MD5" {hex [bitreader bytes $br 16]}] \
+        minimum_block_size [log::entry $l "Minimum block size (samples)" {bitreader::uint $br 16}] \
+        maximum_block_size [log::entry $l "Maximum block size (samples)" {bitreader::uint $br 16}] \
+        minimum_frame_size [log::entry $l "Minimum frame size (bytes)" {bitreader::uint $br 24}] \
+        maximum_frame_size [log::entry $l "Maximum frame size (bytes)" {bitreader::uint $br 24}] \
+        sample_rate [log::entry $l "Sample rate" {bitreader::uint $br 20}] \
+        channels [log::entry $l "Channels" {expr [bitreader::uint $br 3]+1}] \
+        bit_per_sample [log::entry $l "Bits per sample" {expr [bitreader::uint $br 5]+1}] \
+        total_samples [log::entry $l "Total samples in stream" {bitreader::uint $br 36}] \
+        md5 [log::entry $l "MD5" {hex [bitreader::bytes $br 16]}] \
     ]
 }
 
-proc parse_flac_metadata_block {br} {
+proc parse_flac_metadata_block {l br} {
     global block_type_to_string
 
-    set last_block [entry $br "Last block" {bitreader uint $br 1}]
-    entry $br "Type" {
-        set type [bitreader uint $br 7]
+    set last_block [log::entry $l "Last block" {bitreader::uint $br 1}]
+    log::entry $l "Type" {
+        set type [bitreader::uint $br 7]
         set type_name "Unknown"
         if {[dict exists $block_type_to_string $type]} {
             set type_name [dict get $block_type_to_string $type]
         }
         list $type_name
     }
-    set len [entry $br "Length" {bitreader uint $br 24}]
+    set len [log::entry $l "Length" {bitreader::uint $br 24}]
 
     set metablock [switch -exact -- $type {
-        0 {parse_flac_metdata_block_streaminfo $br}
+        0 {parse_flac_metdata_block_streaminfo $l $br}
         default {
-            entry $br "Data" {bitreader skip $br [expr $len*8]}
+            log::entry $l "Data" {bitreader::skip $br [expr $len*8]}
         }
     }]
 
@@ -817,12 +787,12 @@ proc parse_flac_metadata_block {br} {
     ] $metablock]
 }
 
-proc parse_frame {br streaminfo} {
-    set frame_start [bitreader bytepos $br]
+proc parse_frame {l br streaminfo} {
+    set frame_start [bitreader::bytepos $br]
 
     # <14> 11111111111110
-    entry $br "Sync" {
-        set sync [bitreader uint $br 14]
+    log::entry $l "Sync" {
+        set sync [bitreader::uint $br 14]
         set sync_correct "(incorrect)"
         if {$sync == 0x3ffe} {
             set sync_correct "(correct)"
@@ -833,8 +803,8 @@ proc parse_frame {br streaminfo} {
     # <1> Reserved
     # 0 : mandatory value
     # 1 : reserved for future use
-    entry $br "Reserved" {
-        set r [bitreader uint $br 1]
+    log::entry $l "Reserved" {
+        set r [bitreader::uint $br 1]
         set r_correct "(incorrect)"
         if {$r == 0} {
             set r_correct "(correct)"
@@ -845,8 +815,8 @@ proc parse_frame {br streaminfo} {
     # <1> Blocking strategy:
     # 0 : fixed-blocksize stream; frame header encodes the frame number
     # 1 : variable-blocksize stream; frame header encodes the sample number
-    set blocking_strategy [entry $br "Blocking strategy" {
-        switch -exact -- [bitreader uint $br 1] {
+    set blocking_strategy [log::entry $l "Blocking strategy" {
+        switch -exact -- [bitreader::uint $br 1] {
             0 {list Fixed}
             1 {list Variable}
         }
@@ -859,8 +829,8 @@ proc parse_frame {br streaminfo} {
     # 0110 : get 8 bit (blocksize-1) from end of header
     # 0111 : get 16 bit (blocksize-1) from end of header
     # 1000-1111 : 256 * (2^(n-8)) samples, i.e. 256/512/1024/2048/4096/8192/16384/32768
-    lassign [entry $br "Block siz" {
-        set bits [bitreader uint $br 4 "Block size"]
+    lassign [log::entry $l "Block siz" {
+        set bits [bitreader::uint $br 4]
         switch -exact -- $bits {
             0 {list "reserved" 0 $bits}
             1 {list 192 192 $bits}
@@ -881,7 +851,7 @@ proc parse_frame {br streaminfo} {
         }
     }] _desc block_size block_size_bits
 
-    set sample_rate_pos [bitreader bytepos $br]
+    set sample_rate_pos [bitreader::bytepos $br]
     # <4> Sample rate:
     # 0000 : get from STREAMINFO metadata block
     # 0001 : 88.2kHz
@@ -899,8 +869,8 @@ proc parse_frame {br streaminfo} {
     # 1101 : get 16 bit sample rate (in Hz) from end of header
     # 1110 : get 16 bit sample rate (in tens of Hz) from end of header
     # 1111 : invalid, to prevent sync-fooling string of 1s
-    lassign [entry $br "Sample rate" {
-        set bits [bitreader uint $br 4]
+    lassign [log::entry $l "Sample rate" {
+        set bits [bitreader::uint $br 4]
         switch -exact -- $bits {
             0 {list "streaminfo" [dict get $streaminfo sample_rate] $bits}
             1 {list 88200 88200 $bits}
@@ -935,8 +905,8 @@ proc parse_frame {br streaminfo} {
     # 1001 : right/side stereo: channel 0 is the side(difference) channel, channel 1 is the right channel
     # 1010 : mid/side stereo: channel 0 is the mid(average) channel, channel 1 is the side(difference) channel
     # 1011-1111 : reserved
-    lassign [entry $br "Channel assignment" {
-        switch -exact -- [bitreader uint $br 4] {
+    lassign [log::entry $l "Channel assignment" {
+        switch -exact -- [bitreader::uint $br 4] {
             0  {list "mono" "" 1}
             1  {list "left, right" "" 2}
             2  {list "left, right, center" "" 3}
@@ -961,8 +931,8 @@ proc parse_frame {br streaminfo} {
     # 101 : 20 bits per sample
     # 110 : 24 bits per sample
     # 111 : reserved
-    lassign [entry $br "Sample size" {
-        switch -exact -- [bitreader uint $br 3] {
+    lassign [log::entry $l "Sample size" {
+        switch -exact -- [bitreader::uint $br 3] {
             0 {list "streaminfo" [dict get $streaminfo bit_per_sample]}
             1 {list 8 8}
             2 {list 12 12}
@@ -977,8 +947,8 @@ proc parse_frame {br streaminfo} {
     # <1> Reserved:
     # 0 : mandatory value
     # 1 : reserved for future use
-    entry $br "Reserved" {
-        set r [bitreader uint $br 1]
+    log::entry $l "Reserved" {
+        set r [bitreader::uint $br 1]
         set r_correct "(incorrect)"
         if {$r == 0} {
             set r_correct "(correct)"
@@ -986,37 +956,37 @@ proc parse_frame {br streaminfo} {
         list [format "%d %s" $r $r_correct]
     }
 
-    section $br "End of header" {
+    log::section $l "End of header" {
         # if(variable blocksize)
         #    <8-56>:"UTF-8" coded sample number (decoded number is 36 bits) [4]
         # else
         #    <8-48>:"UTF-8" coded frame number (decoded number is 31 bits) [4]
         switch -exact -- $blocking_strategy {
-            Fixed {entry $br "Frame number" {utf8_uint $br}}
-            Variable {entry $br "Sample number" {utf8_uint $br}}
+            Fixed {log::entry $l "Frame number" {utf8_uint $br}}
+            Variable {log::entry $l "Sample number" {utf8_uint $br}}
         }
 
         # if(blocksize bits == 011x)
         #    8/16 bit (blocksize-1)
         switch -exact -- $block_size_bits {
-            6 {set block_size [entry $br "Block size" {expr [bitreader uint $br 8]+1}]}
-            7 {set block_size [entry $br "Block size" {expr [bitreader uint $br 16]+1}]}
+            6 {set block_size [log::entry $l "Block size" {expr [bitreader::uint $br 8]+1}]}
+            7 {set block_size [log::entry $l "Block size" {expr [bitreader::uint $br 16]+1}]}
         }
 
         # if(sample rate bits == 11xx)
         #    8/16 bit sample rate
         switch -exact -- $sample_rate_bits {
-            12 {set sample_rate [entry $br "Sample rate" {expr [bitreader uint $br 8]*1000}]}
-            13 {set sample_rate [entry $br "Sample rate" {expr [bitreader uint $br 16]}]}
-            14 {set sample_rate [entry $br "Sample rate" {expr [bitreader uint $br 16]*10}]}
+            12 {set sample_rate [log::entry $l "Sample rate" {expr [bitreader::uint $br 8]*1000}]}
+            13 {set sample_rate [log::entry $l "Sample rate" {expr [bitreader::uint $br 16]}]}
+            14 {set sample_rate [log::entry $l "Sample rate" {expr [bitreader::uint $br 16]*10}]}
         }
     }
 
     # CRC-8 (polynomial = x^8 + x^2 + x^1 + x^0, initialized with 0) of everything before the crc, including the sync code
-    entry $br "CRC" {
-        set frame_end [expr [bitreader bytepos $br]-1]
-        set ccrc [crc8 [bitreader byterange $br $frame_start $frame_end]]
-        set crc [bitreader uint $br 8]
+    log::entry $l "CRC" {
+        set frame_end [expr [bitreader::bytepos $br]-1]
+        set ccrc [crc8 [bitreader::byterange $br $frame_start $frame_end]]
+        set crc [bitreader::uint $br 8]
         set crc_correct "(correct)"
         if {$crc != $ccrc} {
             set crc_correct [format "(incorrect %.2x)" $ccrc]
@@ -1040,18 +1010,18 @@ proc parse_frame {br streaminfo} {
             set extra_inter_chan_bps 1
         }
 
-        section $br "Subframe" {
-            entry $br "Side channel bits" {list $extra_inter_chan_bps}
-            lappend subframe_samples [parse_subframe $br [expr $sample_size+$extra_inter_chan_bps] $block_size]
+        log::section $l "Subframe" {
+            log::entry $l "Side channel bits" {list $extra_inter_chan_bps}
+            lappend subframe_samples [parse_subframe $l $br [expr $sample_size+$extra_inter_chan_bps] $block_size]
         }
     }
-    entry $br "Byte align padding" {bitreader uint $br [bitreader bytealign $br]}
+    log::entry $l "Byte align padding" {bitreader::uint $br [bitreader::bytealign $br]}
 
     # <16> CRC-16 (polynomial = x^16 + x^15 + x^2 + x^0, initialized with 0) of everything before the crc, back to and including the frame header sync code
-    entry $br "Footer CRC" {
-        set frame_end [expr [bitreader bytepos $br]-1]
-        set ccrc [crc16 [bitreader byterange $br $frame_start $frame_end]]
-        set crc [bitreader uint $br 16]
+    log::entry $l "Footer CRC" {
+        set frame_end [expr [bitreader::bytepos $br]-1]
+        set ccrc [crc16 [bitreader::byterange $br $frame_start $frame_end]]
+        set crc [bitreader::uint $br 16]
         set crc_correct "(correct)"
         if {$crc != $ccrc} {
             set crc_correct [format "(incorrect %.4x)" $ccrc]
@@ -1102,12 +1072,12 @@ proc parse_frame {br streaminfo} {
     return $subframe_pcm_samples
 }
 
-proc parse_subframe {br sample_size block_size} {
+proc parse_subframe {l br sample_size block_size} {
     global fixed_coeffs
 
     # <1> Zero bit padding, to prevent sync-fooling string of 1s
-    entry $br "Zero bit" {
-        set z [bitreader uint $br 1]
+    log::entry $l "Zero bit" {
+        set z [bitreader::uint $br 1]
         set z_correct "(incorrect)"
         if {$z == 0} {
             set z_correct "(correct)"
@@ -1123,8 +1093,8 @@ proc parse_subframe {br sample_size block_size} {
     # 001xxx : if(xxx <= 4) SUBFRAME_FIXED, xxx=order ; else reserved
     # 01xxxx : reserved
     # 1xxxxx : SUBFRAME_LPC, xxxxx=order-1
-    lassign [entry $br "Subframe type" {
-        set bits [bitreader uint $br 6]
+    lassign [log::entry $l "Subframe type" {
+        set bits [bitreader::uint $br 6]
         switch -exact -- $bits {
             0 {list Constant}
             1 {list Verbatim}
@@ -1144,15 +1114,15 @@ proc parse_subframe {br sample_size block_size} {
             }
         }
     }] subframe_type lpc_order
-    entry $br "Order" {list $lpc_order}
+    log::entry $l "Order" {list $lpc_order}
 
     # 'Wasted bits-per-sample' flag:
     # 0 : no wasted bits-per-sample in source subblock, k=0
     # 1 : k wasted bits-per-sample in source subblock, k-1 follows, unary coded; e.g. k=3 => 001 follows, k=7 => 0000001 follows.
-    set wasted_bits_flag [entry $br "Wasted bits flag" {bitreader uint $br 1}]
+    set wasted_bits_flag [log::entry $l "Wasted bits flag" {bitreader::uint $br 1}]
     set wasted_bits_k 0
     if {$wasted_bits_flag} {
-        set wasted_bits_k [entry $br "Wasted bits k" {expr [bitreader unary $br]+1}]
+        set wasted_bits_k [log::entry $l "Wasted bits k" {expr [bitreader::unary $br]+1}]
     }
     incr sample_size [expr -$wasted_bits_k]
 
@@ -1161,15 +1131,15 @@ proc parse_subframe {br sample_size block_size} {
     switch -exact -- $subframe_type {
         Constant {
             # <n> Unencoded constant value of the subblock, n = frame's bits-per-sample.
-            set value [entry $br "Value" {bitreader int $br $sample_size}]
+            set value [log::entry $l "Value" {bitreader::int $br $sample_size}]
             set pcm_samples [lrepeat $block_size $value]
         }
         Verbatim {
             # <n> Unencoded warm-up samples (n = frame's bits-per-sample * predictor order).
-            entry $br "Samples" {
+            log::entry $l "Samples" {
                 set pcm_samples [list]
                 for {set i 0} {$i < $block_size} {incr i} {
-                    lappend pcm_samples [bitreader int $br $sample_size]
+                    lappend pcm_samples [bitreader::int $br $sample_size]
                 }
                 list [format "%d samples" $block_size]
             }
@@ -1177,42 +1147,42 @@ proc parse_subframe {br sample_size block_size} {
         Fixed {
             # <n> Unencoded predictor coefficients (n = qlp coeff precision * lpc order) (NOTE: the coefficients are signed two's-complement).
             set warmup_samples [list]
-            entry $br "Warmup samples" {
+            log::entry $l "Warmup samples" {
                 for {set i 0} {$i < $lpc_order} {incr i} {
-                    lappend warmup_samples [bitreader int $br $sample_size]
+                    lappend warmup_samples [bitreader::int $br $sample_size]
                 }
                 list [format "%d samples" $lpc_order]
             }
             # Encoded residual
-            set residuals [parse_residual $br $block_size $lpc_order]
+            set residuals [parse_residual $l $br $block_size $lpc_order]
             set coeffs [lindex $fixed_coeffs $lpc_order]
             set samples [concat $warmup_samples $residuals]
             set pcm_samples [decode_lpc $lpc_order $samples $coeffs 0]
         }
         LPC {
             # <n> Unencoded warm-up samples (n = frame's bits-per-sample * lpc order).
-            entry $br "Warmup samples" {
+            log::entry $l "Warmup samples" {
                 set warmup_samples [list]
                 for {set i 0} {$i < $lpc_order} {incr i} {
-                    lappend warmup_samples [bitreader int $br $sample_size]
+                    lappend warmup_samples [bitreader::int $br $sample_size]
                 }
                 list [format "%d samples" $lpc_order]
             }
             # <4> (Quantized linear predictor coefficients' precision in bits)-1 (1111 = invalid).
-            set precision [entry $br "Precision" {expr [bitreader uint $br 4]+1}]
+            set precision [log::entry $l "Precision" {expr [bitreader::uint $br 4]+1}]
             # <5> Quantized linear predictor coefficient shift needed in bits (NOTE: this number is signed two's-complement).
-            set shift [entry $br "Shift" {bitreader int $br 5}]
+            set shift [log::entry $l "Shift" {bitreader::int $br 5}]
 
             # <n> Unencoded predictor coefficients (n = qlp coeff precision * lpc order) (NOTE: the coefficients are signed two's-complement).
-            entry $br "Coefficients" {
+            log::entry $l "Coefficients" {
                 set coeffs [list]
                 for {set i 0 } {$i < $lpc_order} {incr i} {
-                    lappend coeffs [bitreader int $br $precision]
+                    lappend coeffs [bitreader::int $br $precision]
                 }
                 list [format "%d coefficients" $lpc_order]
             }
             # Encoded residual
-            set residuals [parse_residual $br $block_size $lpc_order]
+            set residuals [parse_residual $l $br $block_size $lpc_order]
             set samples [concat $warmup_samples $residuals]
             set pcm_samples [decode_lpc $lpc_order $samples $coeffs $shift]
         }
@@ -1225,31 +1195,31 @@ proc parse_subframe {br sample_size block_size} {
     return $pcm_samples
 }
 
-proc parse_residual {br block_size lpc_order} {
+proc parse_residual {l br block_size lpc_order} {
     # <2> Residual coding method:
     # 00 : partitioned Rice coding with 4-bit Rice parameter; RESIDUAL_CODING_METHOD_PARTITIONED_RICE follows
     # 01 : partitioned Rice coding with 5-bit Rice parameter; RESIDUAL_CODING_METHOD_PARTITIONED_RICE2 follows
     # 10-11 : reserved
-    lassign [entry $br "Residual coding method" {
-        switch -exact -- [bitreader uint $br 2] {
+    lassign [log::entry $l "Residual coding method" {
+        switch -exact -- [bitreader::uint $br 2] {
             0 {list "Rice (4)" 4 15}
             1 {list "Rice2 (5)" 5 31}
             default {error "reserved"}
         }
     }] _desc rice_parameter_bits rice_parameter_escape
-    entry $br "Rice parameter bits" {list $rice_parameter_bits}
-    entry $br "Rice escape code" {list $rice_parameter_escape}
+    log::entry $l "Rice parameter bits" {list $rice_parameter_bits}
+    log::entry $l "Rice escape code" {list $rice_parameter_escape}
 
     # <4> Partition order.
-    set partition_order [entry $br "Partition order" {bitreader uint $br 4}]
+    set partition_order [log::entry $l "Partition order" {bitreader::uint $br 4}]
     # There will be 2^order partitions.
     set rice_partitions [expr 1 << $partition_order]
-    entry $br "Rice partitions" {list $rice_partitions}
+    log::entry $l "Rice partitions" {list $rice_partitions}
 
     set samples [list]
 
     for {set i 0} {$i < $rice_partitions} {incr i} {
-        section $br "Partition" {
+        log::section $l "Partition" {
             if {$partition_order == 0} {
                 set samples_count [expr $block_size-$lpc_order]
             } elseif {$i != 0} {
@@ -1271,20 +1241,20 @@ proc parse_residual {br block_size lpc_order} {
             # if the partition order is zero, n = frame's blocksize - predictor order
             # else if this is not the first partition of the subframe, n = (frame's blocksize / (2^partition order))
             # else n = (frame's blocksize / (2^partition order)) - predictor order
-            set rice_parameter [entry $br "Rice parameter" {bitreader uint $br $rice_parameter_bits}]
+            set rice_parameter [log::entry $l "Rice parameter" {bitreader::uint $br $rice_parameter_bits}]
             if {$rice_parameter == $rice_parameter_escape} {
-                set sample_size [entry $br "Escape sample size" {bitreader uint $br 5}]
-                entry $br "Samples" {
+                set sample_size [log::entry $l "Escape sample size" {bitreader::uint $br 5}]
+                log::entry $l "Samples" {
                     for {set j 0} {$j < $samples_count} {incr j} {
-                        lappend samples [bitreader uint $br $sample_size]
+                        lappend samples [bitreader::uint $br $sample_size]
                     }
                     list [format "%d samples" $samples_count]
                 }
             } else {
-                entry $br "Samples" {
+                log::entry $l "Samples" {
                     for {set j 0} {$j < $samples_count} {incr j} {
-                        set high [bitreader unary $br]
-                        set low [bitreader uint $br $rice_parameter]
+                        set high [bitreader::unary $br]
+                        set low [bitreader::uint $br $rice_parameter]
                         set residual [zigzag [expr $high<<$rice_parameter | $low]]
                         lappend samples $residual
                     }
@@ -1314,13 +1284,14 @@ proc decode_lpc {order residuals coeffs shift} {
 }
 
 proc decode_flac {data} {
-    set br [bitreader new $data]
+    set br [bitreader::new $data]
+    set l [log::new $br]
     set md5samples [md5::MD5Init]
 
-    entry $br "Magic" {bitreader ascii $br 4}
+    log::entry $l "Magic" {bitreader::bytes $br 4}
     while {1} {
-        section $br "Metablock" {
-            set metablock [parse_flac_metadata_block $br]
+        log::section $l "Metablock" {
+            set metablock [parse_flac_metadata_block $l $br]
             switch -exact -- [dict get $metablock type] {
                 Streaminfo {set streaminfo $metablock}
             }
@@ -1331,9 +1302,9 @@ proc decode_flac {data} {
     }
 
     set frames [list]
-    while {![bitreader end $br]} {
-        section $br "Frame" {
-            set subframes [parse_frame $br $streaminfo]
+    while {![bitreader::end $br]} {
+        log::section $l "Frame" {
+            set subframes [parse_frame $l $br $streaminfo]
             lappend frames $subframes
         }
     }
@@ -1356,7 +1327,7 @@ proc decode_flac {data} {
         md5::MD5Update $md5samples $md5data
     }
 
-    entry $br "MD5" {
+    log::entry $l "MD5" {
         set cmd5 [hex [md5::MD5Final $md5samples]]
         set md5_correct "(correct)"
         if {[dict get $streaminfo md5] != $cmd5} {
@@ -1365,7 +1336,7 @@ proc decode_flac {data} {
         list [format "%s %s" $cmd5 $md5_correct]
     }
 
-    bitreader delete $br
+    bitreader::delete $br
 
     return [dict create \
         streaminfo $streaminfo \
@@ -1384,7 +1355,7 @@ proc flac_to_wav {flacfile wavfile} {
 
     set flac [decode_flac $flacdata]
 
-    set ww [wavwriter new $wavch [dict create \
+    set ww [wavwriter::new $wavch [dict create \
         channels [dict get $flac streaminfo channels] \
         sample_rate [dict get $flac streaminfo sample_rate] \
         bitdepth [dict get $flac streaminfo bit_per_sample] \
@@ -1396,11 +1367,11 @@ proc flac_to_wav {flacfile wavfile} {
         for {set i 0 } {$i < $nsamples} {incr i} {
             for {set c 0} {$c < $channels} {incr c} {
                 set s [lindex $frame $c $i]
-                wavwriter write $ww $s
+                wavwriter::write $ww $s
             }
         }
     }
-    wavwriter delete $ww
+    wavwriter::delete $ww
     close $wavch
 }
 

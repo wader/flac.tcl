@@ -1,6 +1,6 @@
 #!/bin/sh
 
-FLACTLC="$1"
+FLACTCL="$1"
 TEMPDIR="$2"
 if [ "$TEMPDIR" = "" ]; then
     TEMPDIR=$(mktemp -d)
@@ -52,7 +52,7 @@ for BITS in 8 16 24; do
         esac
         ffmpeg -i "$TEMPDIR/$BITS.wav" -f $SFMT -ac 2 "$TEMPDIR/$BITS.wav.pcm"
 
-        "$FLACTLC" "$TEMPDIR/$BITS.$ENCODER.flac" "$TEMPDIR/$BITS.$ENCODER.flactcl.wav" || exit 1
+        "$FLACTCL" "$TEMPDIR/$BITS.$ENCODER.flac" "$TEMPDIR/$BITS.$ENCODER.flactcl.wav" || exit 1
         ffmpeg -i "$TEMPDIR/$BITS.$ENCODER.flactcl.wav" -f $SFMT -ac 2 "$TEMPDIR/$BITS.$ENCODER.flactcl.wav.pcm"
     done
 done
