@@ -26,7 +26,6 @@
 #
 # TODO:
 # MD5 of samples
-# CRC
 
 set section_depth 0
 
@@ -34,7 +33,7 @@ proc section {br label body} {
     global section_depth
 
     set indent [string repeat "  " $section_depth]
-    set start [bitreader pos $br]
+    set start [bitreader bytepos $br]
     puts [format "%.8d-%.8d      %s- %s:" $start $start $indent $label]
     incr section_depth 1
     uplevel 1 $body
@@ -45,10 +44,10 @@ proc entry {br label body} {
     global section_depth
 
     set indent [string repeat "  " $section_depth]
-    set start [bitreader pos $br]
+    set start [bitreader bytepos $br]
     set startbits [bitreader bitpos $br]
     set r [uplevel 1 $body]
-    set end [bitreader pos $br]
+    set end [bitreader bytepos $br]
     set endbits [bitreader bitpos $br]
     set bytealign [bitreader bytealign $br]
     if {$bytealign == 0} {
@@ -72,10 +71,11 @@ proc bitreader args {
         bytes -
         ascii -
         skip -
-        pos -
+        bytepos -
         bitpos -
         end -
         bytealign -
+        byterange -
         delete {
             lassign $args handlevar
             upvar #0 $handlevar h
@@ -166,7 +166,7 @@ proc bitreader args {
             bitreader uint $handlevar $bits
             return ""
         }
-        pos {
+        bytepos {
             if {$h(bufbits) > 0} {
                 return [expr $h(pos)-1]
             }
@@ -180,6 +180,10 @@ proc bitreader args {
         }
         bytealign {
             return $h(bufbits)
+        }
+        byterange {
+            lassign $args start end
+            return [string range $h(data) $start $end]
         }
         delete {
             unset h
@@ -290,6 +294,62 @@ proc wavwriter args {
     }
 }
 
+proc crc8_make_table {poly bits} {
+    set table [list]
+    for {set i 0} {$i < 256} {incr i} {
+        set crc $i
+        for {set j 0} {$j < 8} {incr j} {
+            if {($crc & (1<<($bits-1)))} {
+                set crc [expr (($crc<<1) ^ $poly) & 0xff]
+            } else {
+                set crc [expr ($crc<<1) & 0xff]
+            }
+        }
+        lappend table $crc
+    }
+
+    return $table
+}
+
+set crc8table [crc8_make_table 0x7 8]
+proc crc8 {s} {
+    global crc8table
+    set crc 0
+    for {set i 0} {$i < [string length $s]} {incr i} {
+        set n [scan [string index $s $i] %c]
+        set crc [lindex $crc8table [expr $crc^$n]]
+    }
+    return $crc
+}
+
+proc crc16make_table {poly bits} {
+    set table [list]
+    for {set i 0} {$i < 256} {incr i} {
+        set crc [expr $i<<8]
+        for {set j 0} {$j < 8} {incr j} {
+            if {($crc & (1<<($bits-1)))} {
+                set crc [expr (($crc<<1) ^ $poly) & 0xffff]
+            } else {
+                set crc [expr ($crc<<1) & 0xffff]
+            }
+        }
+        lappend table $crc
+    }
+
+    return $table
+}
+
+set crc16table [crc16make_table 0x8005 16]
+proc crc16 {s} {
+    global crc16table
+    set crc 0
+    for {set i 0} {$i < [string length $s]} {incr i} {
+        set n [scan [string index $s $i] %c]
+        set crc [expr ($crc<<8 ^ [lindex $crc16table [expr ($crc>>8) ^ $n]]) & 0xffff]
+    }
+    return $crc
+}
+
 # http://www.hpl.hp.com/techreports/1999/HPL-1999-144.pdf
 set fixed_coeffs [list \
     [list] \
@@ -393,6 +453,8 @@ proc parse_flac_metadata_block {br} {
 }
 
 proc parse_frame {br streaminfo} {
+    set frame_start [bitreader bytepos $br]
+
     # <14> 11111111111110
     entry $br "Sync" {
         set sync [bitreader uint $br 14]
@@ -454,7 +516,7 @@ proc parse_frame {br streaminfo} {
         }
     }] _desc block_size block_size_bits
 
-    set sample_rate_pos [bitreader pos $br]
+    set sample_rate_pos [bitreader bytepos $br]
     # <4> Sample rate:
     # 0000 : get from STREAMINFO metadata block
     # 0001 : 88.2kHz
@@ -586,7 +648,16 @@ proc parse_frame {br streaminfo} {
     }
 
     # CRC-8 (polynomial = x^8 + x^2 + x^1 + x^0, initialized with 0) of everything before the crc, including the sync code
-    entry $br "CRC" {format %.2x [bitreader uint $br 8]}
+    entry $br "CRC" {
+        set frame_end [expr [bitreader bytepos $br]-1]
+        set ccrc [crc8 [bitreader byterange $br $frame_start $frame_end]]
+        set crc [bitreader uint $br 8]
+        set crc_correct "(correct)"
+        if {$crc != $ccrc} {
+            set crc_correct [format "(incorrect %.2x)" $ccrc]
+        }
+        list [format "%.2x %s" $crc $crc_correct]
+    }
 
     set subframe_samples [list]
 
@@ -612,7 +683,16 @@ proc parse_frame {br streaminfo} {
     entry $br "Byte align padding" {bitreader uint $br [bitreader bytealign $br]}
 
     # <16> CRC-16 (polynomial = x^16 + x^15 + x^2 + x^0, initialized with 0) of everything before the crc, back to and including the frame header sync code
-    entry $br "Footer CRC" {format %.4x [bitreader uint $br 16]}
+    entry $br "Footer CRC" {
+        set frame_end [expr [bitreader bytepos $br]-1]
+        set ccrc [crc16 [bitreader byterange $br $frame_start $frame_end]]
+        set crc [bitreader uint $br 16]
+        set crc_correct "(correct)"
+        if {$crc != $ccrc} {
+            set crc_correct [format "(incorrect %.4x)" $ccrc]
+        }
+        list [format "%.4x %s" $crc $crc_correct]
+    }
 
     # Transform mid/side channels into left, right
     # mid = (left + right)/2
