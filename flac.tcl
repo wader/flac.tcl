@@ -52,7 +52,7 @@ namespace eval ::log {
 
         set indent [string repeat "  " $s(depth)]
         set start [bitreader::bytepos $s(br)]
-        puts [format "%.8d-%.8d      %s- %s:" $start $start $indent $label]
+        puts stderr [format "%.8d-%.8d      %s- %s:" $start $start $indent $label]
         incr s(depth) 1
         uplevel 1 $body
         incr s(depth) -1
@@ -73,7 +73,7 @@ namespace eval ::log {
         }
         set bitsize [expr $endbits - $startbits]
         lassign $r value
-        puts [format "%.8d-%.8d %6d %s%s: %s" $start $end $bitsize $indent $label $value]
+        puts stderr [format "%.8d-%.8d %6d %s%s: %s" $start $end $bitsize $indent $label $value]
 
         return $r
     }
@@ -1344,15 +1344,8 @@ proc decode_flac {data} {
     ]
 }
 
-proc flac_to_wav {flacfile wavfile} {
-    set flacch [open $flacfile r]
-    fconfigure $flacch -translation binary
+proc flac_to_wav {flacch wavch} {
     set flacdata [read $flacch]
-    close $flacch
-
-    set wavch [open $wavfile w]
-    fconfigure $wavch -translation binary
-
     set flac [decode_flac $flacdata]
 
     set ww [wavwriter::new $wavch [dict create \
@@ -1372,16 +1365,23 @@ proc flac_to_wav {flacfile wavfile} {
         }
     }
     wavwriter::delete $ww
-    close $wavch
 }
 
+set flacch stdin
+set wavch stdout
 lassign $argv flacfile wavfile
-if {$flacfile == "" || $wavfile == ""} {
-    puts "Usage: $argv0 file.flac file.wav"
-    exit 0
+if {$flacfile != ""} {
+    set flacch [open $flacfile r]
 }
+fconfigure $flacch -translation binary
+if {$wavfile != ""} {
+    set wavch [open $wavfile w]
+}
+fconfigure $wavch -translation binary
 
-if {[catch {flac_to_wav $flacfile $wavfile}]} {
-    puts $errorInfo
+if {[catch {flac_to_wav $flacch $wavch}]} {
+    puts stderr $errorInfo
     exit 1
 }
+close $flacch
+close $wavch
