@@ -149,6 +149,7 @@ namespace eval ::bitreader {
     proc skip {t bits} {
         upvar #0 $t s
 
+        incr s(bitpos) $bits
         if {$bits > $s(bufbits)} {
             incr bits [expr -$s(bufbits)]
             set s(buf) 0
@@ -158,7 +159,6 @@ namespace eval ::bitreader {
             set bits [expr $bits % 8]
             incr s(pos) $skip_bytes
         }
-        incr s(bitpos) $bits
 
         uint $t $bits
 
