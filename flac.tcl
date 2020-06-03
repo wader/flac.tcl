@@ -105,7 +105,11 @@ namespace eval ::bitreader {
         upvar #0 $t s
 
         while {$bits > $s(bufbits)} {
-            set b [scan [string index $s(data) $s(pos)] %c]
+            set d [string index $s(data) $s(pos)]
+            if {$d == ""} {
+                error "read index $s(pos) is outside file length [string length $s(data)]"
+            }
+            set b [scan $d %c]
             set s(buf) [expr ($s(buf)<<8) | $b]
             incr s(bufbits) 8
             incr s(pos) 1
@@ -160,6 +164,10 @@ namespace eval ::bitreader {
             incr s(pos) $skip_bytes
         }
 
+        if {$s(pos) >= [string length $s(data)]} {
+            error "skip to offset $s(pos) is outside file length [string length $s(data)]"
+        }
+
         uint $t $bits
 
         return ""
@@ -187,7 +195,12 @@ namespace eval ::bitreader {
     }
     proc byterange {t start end} {
         upvar #0 $t s
-        return [string range $s(data) $start $end]
+        set b [string range $s(data) $start $end]
+        set rangelen [expr $end-$start+1]
+        if {[string length $b] != $rangelen} {
+            error "byte range $start-$end of length $rangelen is outside file length [string length $s(data)]"
+        }
+        return $b
     }
     proc delete {t} {
         upvar #0 $t s
