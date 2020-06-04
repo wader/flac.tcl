@@ -36,62 +36,60 @@ docker build .
 00000005-00000007     24   Length: 34
 00000008-00000009     16   Minimum block size (samples): 4096
 00000010-00000011     16   Maximum block size (samples): 4096
-00000012-00000014     24   Minimum frame size (bytes): 14
-00000015-00000017     24   Maximum frame size (bytes): 14652
+00000012-00000014     24   Minimum frame size (bytes): 16
+00000015-00000017     24   Maximum frame size (bytes): 24586
 00000018-00000020     20   Sample rate: 44100
 00000020-00000020      3   Channels: 2
-00000020-00000021      5   Bits per sample: 16
-00000021-00000025     36   Total samples in stream: 10162992
-00000026-00000041    128   MD5: f9261a51f2004e050c9b7475030861ed
+00000020-00000021      5   Bits per sample: 24
+00000021-00000025     36   Total samples in stream: 44100
+00000026-00000041    128   MD5: 6e852e22654d74254205c304a6fa5d69
 00000042-00000042      - Metablock:
 00000042-00000042      1   Last block: 0
 00000042-00000042      7   Type: Seektable
-00000043-00000045     24   Length: 432
-00000046-00000477      0   Data:
-00000478-00000478      - Metablock:
-00000478-00000478      1   Last block: 0
-00000478-00000478      7   Type: Vorbis comment
-00000479-00000481     24   Length: 40
-00000482-00000521      0   Data:
-00000522-00000522      - Metablock:
-00000522-00000522      1   Last block: 1
-00000522-00000522      7   Type: Padding
-00000523-00000525     24   Length: 8192
-00000526-00008717      0   Data:
+00000043-00000045     24   Length: 18
+00000046-00000063    144   Data:
+00000064-00000064      - Metablock:
+00000064-00000064      1   Last block: 0
+00000064-00000064      7   Type: Vorbis comment
+00000065-00000067     24   Length: 84
+00000068-00000151    672   Data:
+00000152-00000152      - Metablock:
+00000152-00000152      1   Last block: 1
+00000152-00000152      7   Type: Padding
+00000153-00000155     24   Length: 8192
+00000156-00008347  65536   Data:
 ...
-00075789-00075789      - Frame:
-00075789-00075790     14   Sync: 3ffe (correct)
-00075790-00075790      1   Reserved: 0 (correct)
-00075790-00075790      1   Blocking strategy: Fixed
-00075791-00075791      4   Block siz: 4096
-00075791-00075791      4   Sample rate: 44100
-00075792-00075792      4   Channel assignment: side/right
-00075792-00075792      3   Sample size: 16
-00075792-00075792      1   Reserved: 0 (correct)
-00075793-00075793        - End of header:
-00075793-00075793      8     Frame number: 27
-00075794-00075794      8   CRC: 35 (correct)
-00075795-00075795        - Subframe:
-00075795-00075794      0     Side channel bits: 1
-00075795-00075795      1     Zero bit: 0 (correct)
-00075795-00075795      6     Subframe type: LPC
-00075795-00075795      0     Order: 5
-00075795-00075795      1     Wasted bits flag: 0
-00075796-00075806     85     Warmup samples: 5 samples
-00075806-00075807      4     Precision: 12
-00075807-00075807      5     Shift: 9
-00075807-00075815     60     Coefficients: 5 coefficients
-00075815-00075815      2     Residual coding method: Rice (4)
-00075815-00075815      0     Rice parameter bits: 4
-00075815-00075815      0     Rice escape code: 15
-00075815-00075815      4     Partition order: 6
-00075816-00075815      0     Rice partitions: 64
-00075816-00075816          - Partition:
-00075816-00075816      4       Rice parameter: 2
-00075816-00075844    228       Samples: 59 samples
-00075845-00075845          - Partition:
-00075845-00075845      4       Rice parameter: 2
-00075845-00075875    237       Samples: 64 samples
+00121602-00121602      - Frame:
+00121602-00121603     14   Sync: 3ffe (correct)
+00121603-00121603      1   Reserved: 0 (correct)
+00121603-00121603      1   Blocking strategy: Fixed
+00121604-00121604      4   Block siz: end of header (16 bit)
+00121604-00121604      4   Sample rate: 44100
+00121605-00121605      4   Channel assignment: left, right
+00121605-00121605      3   Sample size: 24
+00121605-00121605      1   Reserved: 0 (correct)
+00121606-00121606        - End of header:
+00121606-00121606      8     Frame number: 9
+00121607-00121608     16     Block size: 2628
+00121609-00121609      8   CRC: 28 (correct)
+00121610-00121610        - Subframe:
+00121610-00121609      0     Side channel bits: 0
+00121610-00121610      1     Zero bit: 0 (correct)
+00121610-00121610      6     Subframe type: LPC
+00121610-00121610      0     Order: 1
+00121610-00121610      1     Wasted bits flag: 0
+00121611-00121613     24     Warmup samples: 1 samples
+00121614-00121614      4     Precision: 15
+00121614-00121615      5     Shift: 15
+00121615-00121616     15     Coefficients: 1 coefficients
+00121617-00121617      2     Residual coding method: Rice2 (5)
+00121617-00121617      0     Rice parameter bits: 5
+00121617-00121617      0     Rice escape code: 31
+00121617-00121617      4     Partition order: 1
+00121617-00121617      0     Rice partitions: 2
+00121617-00121617          - Partition:
+00121617-00121618      5       Rice parameter: 22
+00121618-00125637  32150       Samples: 1313 samples
 ...
 00197209-00197209      2   Byte align padding: 0
 00197210-00197211     16   Footer CRC: 6163 (correct)
