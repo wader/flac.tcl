@@ -843,7 +843,7 @@ namespace eval ::flac {
         # 0110 : get 8 bit (blocksize-1) from end of header
         # 0111 : get 16 bit (blocksize-1) from end of header
         # 1000-1111 : 256 * (2^(n-8)) samples, i.e. 256/512/1024/2048/4096/8192/16384/32768
-        lassign [log::entry $l "Block siz" {
+        lassign [log::entry $l "Block size" {
             set bits [bitreader::uint $br 4]
             switch -exact -- $bits {
                 0 {list "reserved" 0 $bits}
