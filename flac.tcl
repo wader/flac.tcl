@@ -745,7 +745,7 @@ namespace eval ::flac {
         set c [count_leading_ones $n]
 
         switch -exact -- $c {
-            0 {set width 1}
+            0 {}
             # TODO: handle better?
             1 {error "invalid utf8_uint width 1"}
             default {
