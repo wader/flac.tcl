@@ -1159,7 +1159,7 @@ namespace eval ::flac {
                 }
             }
             Fixed {
-                # <n> Unencoded predictor coefficients (n = qlp coeff precision * lpc order) (NOTE: the coefficients are signed two's-complement).
+                # <n> Unencoded warm-up samples (n = frame's bits-per-sample * predictor order).
                 set warmup_samples [list]
                 log::entry $l "Warmup samples" {
                     for {set i 0} {$i < $lpc_order} {incr i} {
@@ -1186,7 +1186,6 @@ namespace eval ::flac {
                 set precision [log::entry $l "Precision" {expr [bitreader::uint $br 4]+1}]
                 # <5> Quantized linear predictor coefficient shift needed in bits (NOTE: this number is signed two's-complement).
                 set shift [log::entry $l "Shift" {bitreader::int $br 5}]
-
                 # <n> Unencoded predictor coefficients (n = qlp coeff precision * lpc order) (NOTE: the coefficients are signed two's-complement).
                 log::entry $l "Coefficients" {
                     set coeffs [list]
