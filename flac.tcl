@@ -760,7 +760,11 @@ namespace eval ::flac {
         return $n
     }
 
-    proc parse_flac_metdata_block_streaminfo {l br} {
+    proc reverse_bytes32 {n} {
+        return  [expr ($n&0xff)<<24 | ($n&0xff00)<<8 | ($n&0xff0000)>>8 | ($n&0xff000000)>>24]
+    }
+
+    proc parse_flac_metdata_block_streaminfo {l br _len} {
         return [dict create \
             minimum_block_size [log::entry $l "Minimum block size (samples)" {bitreader::uint $br 16}] \
             maximum_block_size [log::entry $l "Maximum block size (samples)" {bitreader::uint $br 16}] \
@@ -772,6 +776,97 @@ namespace eval ::flac {
             total_samples [log::entry $l "Total samples in stream" {bitreader::uint $br 36}] \
             md5 [log::entry $l "MD5" {hex [bitreader::bytes $br 16]}] \
         ]
+    }
+
+    proc parse_flac_metdata_block_seektable {l br len} {
+        set seekpoint_count [expr $len / 18]
+        set seekpoint_len 0
+        for {set i 0} {$i < $seekpoint_count} {incr i} {
+            log::section $l "Seekpoint" {
+                log::entry $l "Sample number" {
+                    set n [bitreader::uint $br 64]
+                    set s ""
+                    if {$n == 0xffffffffffffffff} {
+                        set s "Placeholder"
+                    }
+                    list [format "%d %s" $n $s]
+                }
+                log::entry $l "Offset" {bitreader::uint $br 64}
+                log::entry $l "Number of samples" {bitreader::uint $br 16}
+            }
+
+            incr seekpoint_len 18
+        }
+        return [dict create]
+    }
+
+    proc parse_flac_metdata_block_vorbis_comment {l br _len} {
+        # vorbis comments uses little endian
+        set vendor_length [log::entry $l "Vendor length" {reverse_bytes32 [bitreader::uint $br 32]}]
+        log::entry $l "Vendor string" {bitreader::bytes $br $vendor_length}
+        set user_comment_list_length [log::entry $l "User comment list length" {reverse_bytes32 [bitreader::uint $br 32]}]
+        set user_comment_bytes 0
+        log::section $l "User comments" {
+            for {set i 0} {$i < $user_comment_list_length} {incr i} {
+                log::section $l $i {
+                    set comment_len [log::entry $l "Length" {reverse_bytes32 [bitreader::uint $br 32]}]
+                    log::entry $l "String" {bitreader::bytes $br $comment_len}
+                }
+                incr user_comment_bytes [expr 4+$comment_len]
+            }
+        }
+        return [dict create]
+    }
+
+    proc parse_flac_metdata_block_picture {l br _len} {
+        log::entry $l "The picture type" {bitreader::uint $br 32}
+        set mime_length [log::entry $l "MIME length" {bitreader::uint $br 32}]
+        log::entry $l "MIME type" {bitreader::bytes $br $mime_length}
+        set desc_length [log::entry $l "Description length" {bitreader::uint $br 32}]
+        log::entry $l "Description" {bitreader::bytes $br $desc_length}
+        log::entry $l "Width" {bitreader::uint $br 32}
+        log::entry $l "Height" {bitreader::uint $br 32}
+        log::entry $l "Color depth" {bitreader::uint $br 32}
+        log::entry $l "Number of indexed colors" {bitreader::uint $br 32}
+        set picture_length [log::entry $l "Picture length" {bitreader::uint $br 32}]
+        log::entry $l "Picture" {bitreader::skip $br [expr $picture_length*8]}
+        return [dict create]
+    }
+
+    proc parse_flac_metdata_block_cuesheet {l br _len} {
+        log::entry $l "Media catalog number" {bitreader::bytes $br 128}
+        log::entry $l "Lead-in samples" {bitreader::uint $br 64}
+        log::entry $l "Compact disc" {bitreader::uint $br 1}
+        log::entry $l "Reserved" {bitreader::uint $br [expr 7+258*8]}
+        set track_count [log::entry $l "Number of tracks" {bitreader::uint $br 8}]
+        for {set i 0} {$i < $track_count} {incr i} {
+            log::section $l  "Track" {
+                log::entry $l "Track offset" {bitreader::uint $br 64}
+                log::entry $l "Track number" {bitreader::uint $br 8}
+                log::entry $l "ISRC" {bitreader::bytes $br 12}
+                log::section $l  "Flags" {
+                    set track_type [log::entry $l "Track type" {
+                        set n [bitreader::uint $br 1]
+                        list [format "%d %s" $n [switch -exact -- $n {
+                            0 {list Audio}
+                            1 {list Non-audio}
+                        }]]
+                    }]
+                    set pre_emphasis [log::entry $l "Pre-emphasis" {bitreader::uint $br 1}]
+                    log::entry $l "Unused" {bitreader::uint $br 6}
+                }
+                log::entry $l "Reserved" {bitreader::bytes $br 13}
+                set track_index_count [log::entry $l "Track index count" {bitreader::uint $br 8}]
+                for {set j 0} {$j < $track_index_count} {incr j} {
+                    log::section $l  "Index" {
+                        log::entry $l "Offset" {bitreader::uint $br 64}
+                        log::entry $l "Index number" {bitreader::uint $br 8}
+                        log::entry $l "Reserved" {bitreader::bytes $br 3}
+                    }
+                }
+            }
+        }
+        return [dict create]
     }
 
     proc parse_flac_metadata_block {l br} {
@@ -788,8 +883,12 @@ namespace eval ::flac {
         }
         set len [log::entry $l "Length" {bitreader::uint $br 24}]
 
-        set metablock [switch -exact -- $type {
-            0 {parse_flac_metdata_block_streaminfo $l $br}
+        set metablock [switch -exact -- $type_name {
+            Streaminfo {parse_flac_metdata_block_streaminfo $l $br $len}
+            Seektable {parse_flac_metdata_block_seektable $l $br $len}
+            "Vorbis comment" {parse_flac_metdata_block_vorbis_comment $l $br $len}
+            Picture {parse_flac_metdata_block_picture $l $br $len}
+            Cuesheet {parse_flac_metdata_block_cuesheet $l $br $len}
             default {
                 log::entry $l "Data" {bitreader::skip $br [expr $len*8]}
             }
