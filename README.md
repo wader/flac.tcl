@@ -7,6 +7,7 @@ Features:
 - Very verbose output
 - 8, 16, 24 bit depth. Probably supports 32 bit also but not tested as there seems to be no encoder that supports it
 - All channel configurations but only mono, stereo and side channel stereo files tested
+- Parses all metadata blocks
 - Frame header and footer CRC and samples MD5
 
 ## Usage
@@ -47,12 +48,21 @@ docker build .
 00000042-00000042      1   Last block: 0
 00000042-00000042      7   Type: Seektable
 00000043-00000045     24   Length: 18
-00000046-00000063    144   Data:
+00000046-00000046        - Seekpoint:
+00000046-00000053     64     Sample number: 0
+00000054-00000061     64     Offset: 0
+00000062-00000063     16     Number of samples: 4096
 00000064-00000064      - Metablock:
 00000064-00000064      1   Last block: 0
 00000064-00000064      7   Type: Vorbis comment
 00000065-00000067     24   Length: 84
-00000068-00000151    672   Data:
+00000068-00000071     32   Vendor length: 32
+00000072-00000103    256   Vendor string: reference
+00000104-00000107     32   User comment list length: 1
+00000108-00000108        - User comments:
+00000108-00000108          - 0:
+00000108-00000111     32       Length: 40
+00000112-00000151    320       String: WAVEFORMATEXTENSIBLE_CHANNEL_MASK=0x0003
 00000152-00000152      - Metablock:
 00000152-00000152      1   Last block: 1
 00000152-00000152      7   Type: Padding
