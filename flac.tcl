@@ -1248,7 +1248,7 @@ namespace eval ::flac {
                 set pcm_samples [lrepeat $block_size $value]
             }
             Verbatim {
-                # <n> Unencoded warm-up samples (n = frame's bits-per-sample * predictor order).
+                # <n*i> Unencoded subblock; n = frame's bits-per-sample, i = frame's blocksize.
                 log::entry $l "Samples" {
                     set pcm_samples [list]
                     for {set i 0} {$i < $block_size} {incr i} {
@@ -1380,21 +1380,21 @@ namespace eval ::flac {
 
     proc decode_lpc {order residuals coeffs shift} {
         for {set i $order} {$i < [llength $residuals]} {incr i} {
-            set sample 0
+            set r 0
             for {set j 0} {$j < [llength $coeffs]} {incr j} {
                 set c [lindex $coeffs $j]
                 set s [lindex $residuals [expr $i-$j-1]]
-                incr sample [expr $c * $s]
+                incr r [expr $c * $s]
             }
 
-            set sample [expr [lindex $residuals $i] + ($sample >> $shift)]
-            lset residuals $i $sample
+            set r [expr [lindex $residuals $i] + ($r >> $shift)]
+            lset residuals $i $r
         }
 
         return $residuals
     }
 
-    proc decode {data metaablockscript framescript} {
+    proc decode {data metablockscript framescript} {
         set br [bitreader::new $data]
         set l [log::new $br]
         set md5samples [md5::MD5Init]
@@ -1408,7 +1408,7 @@ namespace eval ::flac {
                 }
             }
 
-            {*}$metaablockscript $metablock
+            {*}$metablockscript $metablock
 
             if {[dict get $metablock last_block]} {
                 break
