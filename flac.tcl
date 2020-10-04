@@ -1475,6 +1475,8 @@ namespace eval ::flac_to_wav {
             [list ::flac_to_wav::metablock $t] \
             [list ::flac_to_wav::subframes $t]
 
+        wavwriter::delete $s(ww)
+
         unset s
     }
 
