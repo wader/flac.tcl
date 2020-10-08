@@ -802,14 +802,12 @@ namespace eval ::flac {
         set vendor_length [log::entry $l "Vendor length" {reverse_bytes32 [bitreader::uint $br 32]}]
         log::entry $l "Vendor string" {bitreader::bytes $br $vendor_length}
         set user_comment_list_length [log::entry $l "User comment list length" {reverse_bytes32 [bitreader::uint $br 32]}]
-        set user_comment_bytes 0
         log::section $l "User comments" {
             for {set i 0} {$i < $user_comment_list_length} {incr i} {
                 log::section $l $i {
                     set comment_len [log::entry $l "Length" {reverse_bytes32 [bitreader::uint $br 32]}]
                     log::entry $l "String" {bitreader::bytes $br $comment_len}
                 }
-                incr user_comment_bytes [expr 4+$comment_len]
             }
         }
         return [dict create]
