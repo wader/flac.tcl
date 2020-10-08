@@ -780,7 +780,6 @@ namespace eval ::flac {
 
     proc parse_flac_metdata_block_seektable {l br len} {
         set seekpoint_count [expr $len / 18]
-        set seekpoint_len 0
         for {set i 0} {$i < $seekpoint_count} {incr i} {
             log::section $l "Seekpoint" {
                 log::entry $l "Sample number" {
@@ -794,8 +793,6 @@ namespace eval ::flac {
                 log::entry $l "Offset" {bitreader::uint $br 64}
                 log::entry $l "Number of samples" {bitreader::uint $br 16}
             }
-
-            incr seekpoint_len 18
         }
         return [dict create]
     }
