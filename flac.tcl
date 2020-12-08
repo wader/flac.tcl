@@ -1516,7 +1516,7 @@ fconfigure $flacch -translation binary
 fconfigure $wavch -translation binary
 
 if {[catch {flac_to_wav::transcode $flacch $wavch}]} {
-    puts $errorInfo
+    puts stderr $errorInfo
     exit 1
 }
 
