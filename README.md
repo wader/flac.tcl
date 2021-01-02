@@ -1,6 +1,6 @@
 # flac.tcl
 
-Probably the slowest and most verbose FLAC decoder in the world.
+Probably the slowest FLAC decoder in the world.
 
 Features:
 
