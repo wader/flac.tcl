@@ -1435,12 +1435,13 @@ namespace eval ::flac {
         }
 
         log::entry $l "MD5" {
-            set cmd5 [hex [md5::MD5Final $md5samples]]
+            set calc_md5 [hex [md5::MD5Final $md5samples]]
             set md5_correct "(correct)"
-            if {[dict get $streaminfo md5] != $cmd5} {
-                set md5_correct [format "(incorrect %s)" $cmd5]
+            set si_md5 [dict get $streaminfo md5]
+            if {$si_md5 != $calc_md5} {
+                set md5_correct [format "(incorrect %s)" $si_md5]
             }
-            list [format "%s %s" $cmd5 $md5_correct]
+            list [format "%s %s" $calc_md5 $md5_correct]
         }
 
         bitreader::delete $br
