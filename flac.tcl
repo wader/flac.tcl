@@ -52,7 +52,7 @@ namespace eval ::log {
 
         set indent [string repeat "  " $s(depth)]
         set start [bitreader::bytepos $s(br)]
-        puts stderr [format "%.8d-%.8d      %s- %s:" $start $start $indent $label]
+        puts stderr [format "%.8x-%.8x      %s- %s:" $start $start $indent $label]
         incr s(depth) 1
         uplevel 1 $body
         incr s(depth) -1
@@ -73,7 +73,7 @@ namespace eval ::log {
         }
         set bitsize [expr $endbits - $startbits]
         lassign $r value
-        puts stderr [format "%.8d-%.8d %6d %s%s: %s" $start $end $bitsize $indent $label $value]
+        puts stderr [format "%.8x-%.8x %6d %s%s: %s" $start $end $bitsize $indent $label $value]
 
         return $r
     }
