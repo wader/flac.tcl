@@ -1410,6 +1410,11 @@ namespace eval ::flac {
             }
         }
 
+        set stream_samples 0
+        set decoded_samples 0
+        set total_samples [dict get $streaminfo total_samples]
+        set bit_per_sample [dict get $streaminfo bit_per_sample]
+
         while {![bitreader::end $br]} {
             log::section $l "Frame" {
                 set subframes [parse_frame $l $br $streaminfo]
@@ -1417,18 +1422,22 @@ namespace eval ::flac {
                 set channels [llength $subframes]
                 set nsamples [llength [lindex $subframes 0]]
                 set md5data ""
-                for {set i 0 } {$i < $nsamples} {incr i} {
+                for {set i 0 } {$i < $nsamples && ($total_samples == 0 || $stream_samples < $total_samples)} {incr i} {
                     for {set c 0} {$c < $channels} {incr c} {
                         set s [lindex $subframes $c $i]
-                        switch -exact -- [dict get $streaminfo bit_per_sample] {
+                        switch -exact -- $bit_per_sample {
                             8 {append md5data [binary format c $s]}
                             16 {append md5data [binary format s $s]}
                             24 {append md5data [binary format ccc [expr $s&0xff] [expr ($s&0xff00)>>8] [expr ($s&0xff0000)>>16]]}
                             32 {append md5data [binary format i $s]}
                         }
                     }
+
+                    incr stream_samples
                 }
+
                 md5::MD5Update $md5samples $md5data
+                incr decoded_samples $nsamples
 
                 {*}$framescript $subframes
             }
@@ -1443,6 +1452,8 @@ namespace eval ::flac {
             }
             list [format "%s %s" $calc_md5 $md5_correct]
         }
+        log::entry $l "Stream samples" {list $stream_samples}
+        log::entry $l "Decoded samples" {list $decoded_samples}
 
         bitreader::delete $br
     }
