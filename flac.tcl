@@ -225,8 +225,8 @@ namespace eval ::wavwriter {
         set sample_rate [dict get $config sample_rate]
         set data_size [expr $channels * $bitdepth/8 * [dict get $config total_samples]]
         puts -nonewline $ch "RIFF"
-        # length
-        wuint32le $ch [expr 16+$data_size]
+        # length "WAVE" + fmt header/content + data header/content
+        wuint32le $ch [expr 4+8+16+8+$data_size]
         wstring $ch "WAVE"
         # fmt subchunk
         wstring $ch "fmt "
