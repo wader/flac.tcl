@@ -1439,7 +1439,7 @@ namespace eval ::flac {
             set md5_correct "(correct)"
             set si_md5 [dict get $streaminfo md5]
             if {$si_md5 != $calc_md5} {
-                set md5_correct [format "(incorrect %s)" $si_md5]
+                set md5_correct [format "(metadata %s)" $si_md5]
             }
             list [format "%s %s" $calc_md5 $md5_correct]
         }
