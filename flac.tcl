@@ -164,7 +164,7 @@ namespace eval ::bitreader {
             incr s(pos) $skip_bytes
         }
 
-        if {$s(pos) >= [string length $s(data)]} {
+        if {$s(pos) > [string length $s(data)]} {
             error "skip to offset $s(pos) is outside file length [string length $s(data)]"
         }
 
