@@ -1048,7 +1048,7 @@ namespace eval ::flac {
                 4 {list 16 16}
                 5 {list 20 20}
                 6 {list 24 24}
-                7 {list "reserved" 0}
+                7 {list 32 32}
             }
         }] _desc sample_size
 
