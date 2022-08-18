@@ -1352,7 +1352,7 @@ namespace eval ::flac {
                     set sample_size [log::entry $l "Escape sample size" {bitreader::uint $br 5}]
                     log::entry $l "Samples" {
                         for {set j 0} {$j < $samples_count} {incr j} {
-                            lappend samples [bitreader::uint $br $sample_size]
+                            lappend samples [bitreader::int $br $sample_size]
                         }
                         list [format "%d samples" $samples_count]
                     }
